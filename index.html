@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="sv">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Imposter Online</title>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <style>
+        body { font-family: Arial, sans-serif; text-align: center; background: #222; color: #fff; padding: 20px; }
+        .card { background: #333; padding: 20px; border-radius: 10px; display: inline-block; margin-top: 20px; min-width: 200px; box-shadow: 0 4px 8px rgba(0,0,0,0.2); }
+        button { background: #ff4757; color: white; border: none; padding: 10px 20px; font-size: 16px; border-radius: 5px; cursor: pointer; margin-top: 15px; }
+        button:disabled { background: #555; cursor: not-allowed; }
+        ul { list-style-type: none; padding: 0; }
+        li { background: #444; margin: 5px; padding: 10px; border-radius: 5px; }
+        .hidden { display: none; }
+    </style>
+</head>
+<body>
+
+    <h1>🕵️‍♂️ Imposter Online 🕵️‍♀️</h1>
+    
+    <div id="lobby-info">
+        <h3>Spelare i lobbyn:</h3>
+        <ul id="player-list"></ul>
+    </div>
+
+    <div id="host-controls" class="hidden">
+        <p>⭐ Du är spelledare (Host)!</p>
+        <button id="start-btn" onclick="startGame()">Starta Spelet</button>
+        <button id="end-btn" class="hidden" onclick="endGame()">Avsluta Runda</button>
+    </div>
+
+    <div id="game-screen" class="hidden">
+        <div class="card">
+            <h2 id="role-text">Laddar...</h2>
+            <h1 id="word-text" style="color: #ffa500;">-</h1>
+        </div>
+    </div>
+
+    <div id="spectator-screen" class="hidden">
+        <div class="card" style="border: 2px solid #ffa500;">
+            <h2>Anslöt mitt i rundan 👀</h2>
+            <p>Du är åskådare (Spectator). Du får vara med och spela så fort denna runda är slut!</p>
+        </div>
+    </div>
+
+    <script>
+        // BYT UT DENNA URL till din backend-url när du har publicerat den (t.ex. på Render)
+        // Just nu letar den efter servern på din egen dator (localhost)
+        const SERVER_URL = "https://imposter-e2b4.onrender.com"; 
+        
+        const socket = io(SERVER_URL);
+
+        let myId = "";
+        let isHost = false;
+
+        // Initiering vid anslutning
+        socket.on('init', (data) => {
+            myId = data.id;
+            isHost = data.isHost;
+
+            if (isHost) {
+                document.getElementById('host-controls').classList.remove('hidden');
+            }
+
+            if (data.gameActive) {
+                if (data.role === 'spectator') {
+                    document.getElementById('spectator-screen').classList.remove('hidden');
+                    document.getElementById('game-screen').classList.add('hidden');
+                }
+            } else {
+                // Återställ skärmar om inget spel är igång
+                document.getElementById('game-screen').classList.add('hidden');
+                document.getElementById('spectator-screen').classList.add('hidden');
+                document.getElementById('start-btn').classList.remove('hidden');
+                document.getElementById('end-btn').classList.add('hidden');
+            }
+        });
+
+        // Blir tilldelad Host-status om den förra hosten lämnar
+        socket.on('makeHost', () => {
+            isHost = true;
+            document.getElementById('host-controls').classList.remove('hidden');
+        });
+
+        // Uppdatera listan över spelare
+        socket.on('updatePlayers', (players) => {
+            const list = document.getElementById('player-list');
+            list.innerHTML = "";
+            players.forEach(p => {
+                const li = document.createElement('li');
+                let status = p.role === 'spectator' ? "👀 Åskådare" : "⏳ Väntar";
+                if (p.role === 'imposter' || p.role === 'innocent') status = "🎮 Spelar";
+                
+                li.innerText = `${p.name} (${status}) ${p.id === myId ? " (Du)" : ""}`;
+                list.appendChild(li);
+            });
+        });
+
+        // Spelet drar igång!
+        socket.on('gameStarted', (data) => {
+            document.getElementById('start-btn').classList.add('hidden');
+            if (isHost) document.getElementById('end-btn').classList.remove('hidden');
+
+            if (data.role === 'spectator') {
+                document.getElementById('spectator-screen').classList.remove('hidden');
+                document.getElementById('game-screen').classList.add('hidden');
+            } else {
+                document.getElementById('spectator-screen').classList.add('hidden');
+                document.getElementById('game-screen').classList.remove('hidden');
+                
+                if (data.role === 'imposter') {
+                    document.getElementById('role-text').innerText = "🔴 Du är IMPOSTER!";
+                    document.getElementById('word-text').innerText = `Ditt ord: ${data.word}`;
+                } else {
+                    document.getElementById('role-text').innerText = "🟢 Du är Innocent";
+                    document.getElementById('word-text').innerText = `Hemligt ord: ${data.word}`;
+                }
+            }
+        });
+
+        socket.on('gameEnded', (data) => {
+            alert(`Rundan är slut! Det hemliga ordet var: ${data.secretWord}`);
+        });
+
+        socket.on('errorMsg', (msg) => {
+            alert(msg);
+        });
+
+        // Funktioner för knapparna (skickar signaler till servern)
+        function startGame() {
+            socket.emit('startGame');
+        }
+
+        function endGame() {
+            socket.emit('endGame');
+        }
+    </script>
+</body>
+</html>
